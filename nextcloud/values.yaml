@@ -1,0 +1,31 @@
+nextcloud:
+  host: 192.168.188.89:30080
+  username: admin
+  password: smoketest123
+
+service:
+  type: NodePort
+  nodePort: 30080
+
+ingress:
+  enabled: false
+
+# Kein persistenter Storage — Smoke-Test, Daten gehen beim Löschen verloren
+persistence:
+  enabled: false
+
+# SQLite statt MariaDB — vermeidet Init-Container-Bug, reicht für Smoke-Test
+internalDatabase:
+  enabled: true
+  name: nextcloud
+
+mariadb:
+  enabled: false
+
+resources:
+  requests:
+    memory: 256Mi
+    cpu: 100m
+  limits:
+    memory: 512Mi
+    cpu: 500m
