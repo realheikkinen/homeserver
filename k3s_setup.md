@@ -4,13 +4,14 @@
 
 k3s-Cluster mit drei Nodes aufsetzen:
 
-| Hostname | Rolle | IP (Beispiel) |
+| Hostname | Rolle | IP |
 |---|---|---|
-| k8s-master-01 | Server (Control Plane) | 192.168.1.10 |
-| k8s-worker-01 | Agent | 192.168.1.11 |
-| k8s-worker-02 | Agent | 192.168.1.12 |
+| k8s-master-01 | Server (Control Plane) | 192.168.188.87 |
+| k8s-worker-01 | Agent | 192.168.188.89 |
+| k8s-worker-02 | Agent | 192.168.188.91 |
 
-> Die IPs sind Platzhalter — an das eigene Netzwerk anpassen.
+> ✅ **Status (2026-07-07):** reale IPs, verifiziert per DNS (FritzBox, Netz `192.168.188.0/24`).
+> Die ursprünglichen `192.168.1.x`-Platzhalter waren nur Beispiele für die Doku-Erstellung.
 
 ---
 

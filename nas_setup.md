@@ -24,7 +24,8 @@ NAS (HP ProDesk 600 G4)
 ```
 
 App-Datenbanken (CloudNativePG) laufen im Cluster auf Longhorn — der NAS ist ihr **Backup-Ziel**, nicht ihr Host.
-Der k3s-Datastore-PostgreSQL ist der einzige Dienst auf dem NAS, der direkt für den Cluster kritisch ist.
+Der k3s-Datastore-PostgreSQL ist der einzige Dienst auf dem NAS, der direkt für den Cluster kritisch wäre —
+diese Migration ist aber vorerst zurückgestellt, k3s läuft zunächst weiter mit SQLite (siehe Abschnitt 6).
 
 ---
 
@@ -60,7 +61,7 @@ sudo hostnamectl set-hostname nas-01
 In `/etc/hosts` auf **allen Cluster-Nodes** eintragen:
 
 ```
-192.168.188.XXX  nas-01
+192.168.188.64  nas-01
 ```
 
 SSH-Key vom eigenen Rechner verteilen:
@@ -69,22 +70,74 @@ SSH-Key vom eigenen Rechner verteilen:
 ssh-copy-id user@nas-01
 ```
 
+> ✅ **Status (2026-07-07):** erledigt. Heimnetz ist `192.168.188.0/24` (FritzBox-DHCP),
+> `nas-01` = `192.168.188.64`, `k8s-master-01` = `192.168.188.87`.
+
 ---
 
-## 2. Festplatten einrichten
+## 2. Standby verhindern
+
+Der NAS dient als Backup-Ziel und muss dauerhaft erreichbar bleiben. Auf einem
+headless-System ohne Desktop-Environment reicht es, die Sleep-Targets auf
+systemd-Ebene zu blockieren (unabhängig von den BIOS-Einstellungen aus `nas_bios.md`,
+die nur Stromausfall/Fernstart betreffen).
+
+### Sleep-Targets maskieren
+
+```bash
+sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
+```
+
+Maskierte Targets lassen sich nicht mehr aktivieren — auch nicht versehentlich durch
+ACPI-Events oder `systemctl suspend`.
+
+### logind.conf prüfen
+
+`/etc/systemd/logind.conf`:
+
+```ini
+HandleSuspendKey=ignore
+HandleHibernateKey=ignore
+HandleLidSwitch=ignore
+HandleLidSwitchExternalPower=ignore
+IdleAction=ignore
+```
+
+```bash
+sudo systemctl restart systemd-logind
+```
+
+### Verifizieren
+
+```bash
+systemctl status sleep.target
+# sollte "masked" anzeigen
+```
+
+> ✅ **Status (2026-07-07):** erledigt, `sleep.target` zeigt `masked`.
+
+---
+
+## 3. Festplatten einrichten
 
 ### Laufwerke identifizieren
 
 ```bash
-lsblk -o NAME,SIZE,TYPE,MOUNTPOINT,MODEL
+lsblk -o NAME,SIZE,TYPE,MOUNTPOINTS,MODEL
 ```
 
 Die SATA-Laufwerke erscheinen typischerweise als `/dev/sda`, `/dev/sdb` etc.
 Die interne SSD (OS) ist bereits gemountet — die beiden neuen Laufwerke sind es nicht.
 
+> ⚠️ Bei gebrauchter Hardware können die neuen Laufwerke bereits Partitionen von einer
+> Vorbesitzer-Installation enthalten (bei uns: alte Windows-Partitionen auf beiden Platten).
+> Vor dem Formatieren prüfen und ggf. mit `wipefs -a /dev/sdX` bereinigen — das ist destruktiv,
+> vorher unbedingt sicherstellen, dass keine benötigten Daten mehr drauf sind.
+
 ### 1TB SSD formatieren und mounten
 
 ```bash
+sudo wipefs -a /dev/sdX                # X durch korrekten Device-Namen ersetzen, falls Alt-Partitionen vorhanden
 sudo mkfs.ext4 -L fast-data /dev/sdX   # X durch korrekten Device-Namen ersetzen
 sudo mkdir -p /data/fast
 ```
@@ -98,6 +151,7 @@ LABEL=fast-data  /data/fast  ext4  defaults,noatime  0  2
 ### 2TB HDD formatieren und mounten
 
 ```bash
+sudo wipefs -a /dev/sdY                # Y durch korrekten Device-Namen ersetzen, falls Alt-Partitionen vorhanden
 sudo mkfs.ext4 -L bulk-data /dev/sdY   # Y durch korrekten Device-Namen ersetzen
 sudo mkdir -p /data/bulk
 ```
@@ -125,9 +179,13 @@ sudo mkdir -p \
   /data/bulk/k3s-pvc
 ```
 
+> ✅ **Status (2026-07-07):** erledigt. Bei uns: `/dev/sdb` (953,9G) = 1TB SSD → `/data/fast`
+> (938G frei), `/dev/sda` (1,8T) = 2TB HDD → `/data/bulk` (1,7T frei). Device-Namen können
+> auf anderer Hardware abweichen — immer erst mit `lsblk` prüfen statt blind übernehmen.
+
 ---
 
-## 3. NFS-Server
+## 4. NFS-Server
 
 ### Installation
 
@@ -170,9 +228,13 @@ ls /mnt
 sudo umount /mnt
 ```
 
+> ✅ **Status (2026-07-07):** erledigt. Alle 4 Exports aktiv (`showmount -e localhost` zeigt
+> sie), Mount von `k8s-worker-01` erfolgreich getestet (leer, da noch keine Medien liegen —
+> erwartet).
+
 ---
 
-## 4. NFS-Provisioner im k3s-Cluster
+## 5. NFS-Provisioner im k3s-Cluster
 
 Damit Pods NFS-Volumes per PVC anfordern können, statt sie manuell als PV anzulegen.
 
@@ -199,9 +261,18 @@ Danach stehen zwei StorageClasses zur Verfügung:
 | `longhorn` | Replizierte SSDs (Dell-Nodes) | Datenbanken (CloudNativePG), kritische App-Daten |
 | `nfs-nas` | HDD auf dem NAS | Medien, große Dateien, unkritische Daten |
 
+> ✅ **Status (2026-07-07):** erledigt. Helm-Release `nfs-provisioner` in `kube-system`,
+> StorageClass `nfs-nas` vorhanden, per Test-PVC verifiziert (sofort `Bound`). Ausgeführt von
+> Stefans eigenem Rechner aus (`KUBECONFIG=~/.kube/config-homeserver/k3s.yaml`), kein direkter
+> Zugriff auf die Cluster-Nodes nötig.
+
 ---
 
-## 5. PostgreSQL als k3s-Datastore
+## 6. PostgreSQL als k3s-Datastore (später — SQLite reicht zunächst)
+
+> Diese Migration ist **nicht Voraussetzung** für die restlichen Schritte (NFS, MinIO, Longhorn,
+> CloudNativePG, Apps). Sie kann jederzeit nachgeholt werden, sobald der Cluster mit den
+> Anwendungen stabil läuft — siehe Reihenfolge in Abschnitt 10.
 
 k3s unterstützt nativ externe Datenbanken als Cluster-State-Speicher via `--datastore-endpoint`.
 PostgreSQL auf dem NAS ersetzt SQLite auf dem Master — mit zwei entscheidenden Vorteilen:
@@ -319,7 +390,7 @@ Kein etcd-Quorum, kein Cluster-Reset — beide Server-Nodes teilen dieselbe Post
 
 ---
 
-## 6. MinIO (S3-Ziel für Velero und CloudNativePG-Backups)
+## 7. MinIO (S3-Ziel für Velero und CloudNativePG-Backups)
 
 ### Installation
 
@@ -387,9 +458,13 @@ mc mb nas/velero
 mc mb nas/cnpg-backups
 ```
 
+> ✅ **Status (2026-07-07):** erledigt. MinIO läuft als systemd-Service, erreichbar unter
+> `http://192.168.188.64:9000` (API) / `:9001` (WebUI). Buckets `velero` und `cnpg-backups`
+> angelegt (`mc ls nas` zeigt beide).
+
 ---
 
-## 7. SSH/rsync-Ziel (Backup-Eingang vom Master)
+## 8. SSH/rsync-Ziel (Backup-Eingang vom Master)
 
 Der NAS übernimmt die Rolle des rsync-Ziels vom Worker-01 (wo die Key-Auth fehlschlug).
 Nach der Migration auf PostgreSQL entfällt der SQLite-Cronjob auf dem Master — der `backup`-User
@@ -435,7 +510,7 @@ sudo crontab -e
 
 ---
 
-## 8. Velero im k3s-Cluster einrichten
+## 9. Velero im k3s-Cluster einrichten
 
 ```bash
 # Velero CLI installieren (auf eigenem Rechner oder Master)
@@ -468,15 +543,20 @@ velero backup describe test-backup
 
 ---
 
-## 9. Nächste Schritte (nach NAS-Setup)
+## 10. Nächste Schritte (nach NAS-Setup)
 
-1. **PostgreSQL einrichten + k3s migrieren** (Abschnitt 5 — vor allem anderen)
-2. **Longhorn deployen** (replizierter Block-Storage für App-Datenbanken)
+> **Entscheidung (2026-07-07):** k3s bleibt zunächst auf SQLite — schnellerer Weg zu einem
+> lauffähigen Ergebnis. Die PostgreSQL-Migration (Abschnitt 6) folgt später, wenn die
+> Anwendungen stehen.
+
+1. ~~**NFS + MinIO einrichten**~~ ✅ **erledigt (2026-07-07)** (Abschnitt 4 + 7)
+2. **Longhorn deployen** (replizierter Block-Storage für App-Datenbanken) ← **nächster Schritt**
 3. **CloudNativePG** (PostgreSQL-Operator, nutzt Longhorn-Storage)
 4. **Nextcloud neu deployen** (mit CloudNativePG + Longhorn PVC)
 5. **Velero einrichten** (nach Abschnitt 8)
 6. **Immich deployen** (Thumbnails auf NFS-SSD, Originale auf NFS-HDD)
 7. **Jellyfin deployen** (NFS-PVC auf `/data/bulk/media`)
+8. **PostgreSQL als k3s-Datastore** (Abschnitt 6 — später, wenn der Cluster stabil läuft; SQLite reicht für den Start)
 
 ---
 

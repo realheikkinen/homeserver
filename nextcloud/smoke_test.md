@@ -42,10 +42,8 @@ nextcloud-XXXX                          1/1     Running   0
 kubectl get svc -n nextcloud
 ```
 
-Im Browser: `http://192.168.1.11:30080`  
+Im Browser: `http://192.168.188.89:30080` (k8s-worker-01)
 Login: `admin` / `smoketest123`
-
-> Falls 192.168.1.11 nicht die richtige Worker-IP ist, in `values.yaml` und der URL anpassen.
 
 ## Aufräumen
 
