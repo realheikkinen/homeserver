@@ -1,0 +1,22 @@
+service:
+  type: NodePort
+  port: 8096
+  nodePort: 30096
+
+persistence:
+  config:
+    enabled: true
+    existingClaim: jellyfin-config
+  media:
+    enabled: true
+    existingClaim: jellyfin-media
+  cache:
+    enabled: false   # emptyDir reicht, unkritischer Bild-/Transcoding-Cache
+
+resources:
+  requests:
+    memory: 512Mi
+    cpu: 250m
+  limits:
+    memory: 2Gi
+    cpu: "2"

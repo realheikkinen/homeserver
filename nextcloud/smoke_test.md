@@ -1,5 +1,11 @@
 # Nextcloud Smoke-Test
 
+> ⚠️ **Historisch — abgelöst am 2026-07-07.** Dieser Smoke-Test (SQLite, kein persistenter
+> Storage) diente nur zum Prüfen, ob der Helm-Chart auf dem Cluster startet — kein Datenerhalt
+> bei Pod-Neustarts. Der Release wurde entfernt (`helm uninstall`). Das produktive Deployment
+> mit CloudNativePG + Longhorn-Storage ist in `../nextcloud_setup.md` dokumentiert, Werte in
+> `values-prod.yaml`. Diese Datei bleibt nur als Referenz stehen, nicht mehr aktiv nutzen.
+
 ## Voraussetzungen
 
 Helm installieren (falls noch nicht geschehen):

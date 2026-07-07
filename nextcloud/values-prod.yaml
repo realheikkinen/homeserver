@@ -1,0 +1,58 @@
+nextcloud:
+  host: 192.168.188.89:30080
+  existingSecret:
+    enabled: true
+    secretName: nextcloud-admin
+    usernameKey: nextcloud-username
+    passwordKey: nextcloud-password
+
+service:
+  type: NodePort
+  nodePort: 30080
+
+ingress:
+  enabled: false
+
+# Persistenter Storage auf Longhorn (repliziert, 2x) statt kein-Storage wie im Smoke-Test
+persistence:
+  enabled: true
+  storageClass: longhorn
+  size: 10Gi
+
+# Kein SQLite mehr — echtes PostgreSQL über CloudNativePG
+internalDatabase:
+  enabled: false
+
+mariadb:
+  enabled: false
+
+externalDatabase:
+  enabled: true
+  type: postgresql
+  existingSecret:
+    enabled: true
+    secretName: nextcloud-postgres-app
+    usernameKey: username
+    passwordKey: password
+    hostKey: host
+    databaseKey: dbname
+
+resources:
+  requests:
+    memory: 256Mi
+    cpu: 100m
+  limits:
+    memory: 768Mi
+    cpu: 750m
+
+# Erstinstallation (DB-Schema anlegen etc.) dauert auf 8GB-Nodes mit Longhorn-Storage
+# länger als die Default-Liveness-Probe (~40s) toleriert -> Pod wurde mitten in der
+# Installation gekillt und landete in CrashLoopBackOff. startupProbe gibt bis zu
+# 10 Minuten für den Erststart, danach greifen liveness/readiness normal.
+startupProbe:
+  enabled: true
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 60
+  successThreshold: 1

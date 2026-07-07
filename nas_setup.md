@@ -550,12 +550,15 @@ velero backup describe test-backup
 > Anwendungen stehen.
 
 1. ~~**NFS + MinIO einrichten**~~ ✅ **erledigt (2026-07-07)** (Abschnitt 4 + 7)
-2. **Longhorn deployen** (replizierter Block-Storage für App-Datenbanken) ← **nächster Schritt**
-3. **CloudNativePG** (PostgreSQL-Operator, nutzt Longhorn-Storage)
-4. **Nextcloud neu deployen** (mit CloudNativePG + Longhorn PVC)
-5. **Velero einrichten** (nach Abschnitt 8)
-6. **Immich deployen** (Thumbnails auf NFS-SSD, Originale auf NFS-HDD)
-7. **Jellyfin deployen** (NFS-PVC auf `/data/bulk/media`)
+2. ~~**Longhorn deployen**~~ ✅ **erledigt (2026-07-07)** — eigene Anleitung: `longhorn_setup.md`
+3. ~~**CloudNativePG**~~ ✅ **erledigt (2026-07-07)** — eigene Anleitung: `cloudnativepg_setup.md`
+4. ~~**Nextcloud neu deployen**~~ ✅ **erledigt (2026-07-07)** — eigene Anleitung: `nextcloud_setup.md`
+5. ~~**Jellyfin deployen**~~ ✅ **erledigt (2026-07-07)** — eigene Anleitung: `jellyfin_setup.md` (Stefan hat Jellyfin bewusst vor Immich priorisiert, einfacher/schneller Erfolg)
+6. **Immich deployen** (Thumbnails auf NFS-SSD, Originale auf NFS-HDD) ← **nächster Schritt**
+7. **Velero einrichten** (nach Abschnitt 8) — bewusst nach hinten verschoben (2026-07-07): erst
+   alle Apps deployen, dann EIN Backup-Setup, das alles abdeckt, statt jetzt für die noch leere
+   Nextcloud-Instanz. CloudNativePG-eigene Backups (WAL gegen `cnpg-backups`) sind unabhängig
+   davon möglich, sobald echte Daten in einer App-DB liegen.
 8. **PostgreSQL als k3s-Datastore** (Abschnitt 6 — später, wenn der Cluster stabil läuft; SQLite reicht für den Start)
 
 ---
