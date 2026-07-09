@@ -1,0 +1,87 @@
+# Chart: oci://ghcr.io/immich-app/immich-charts/immich, Version 0.13.1 (appVersion v3.0.0)
+# image.tag unten pinnt explizit auf v3.0.1 (Chart aktualisiert sich nicht automatisch mit jedem Immich-Release)
+
+controllers:
+  main:
+    containers:
+      main:
+        image:
+          tag: v3.0.1
+        env:
+          # Zugangsdaten aus dem automatisch erzeugten CloudNativePG-App-Secret
+          DB_HOSTNAME:
+            valueFrom:
+              secretKeyRef:
+                name: immich-postgres-app
+                key: host
+          DB_USERNAME:
+            valueFrom:
+              secretKeyRef:
+                name: immich-postgres-app
+                key: username
+          DB_DATABASE_NAME:
+            valueFrom:
+              secretKeyRef:
+                name: immich-postgres-app
+                key: dbname
+          DB_PASSWORD:
+            valueFrom:
+              secretKeyRef:
+                name: immich-postgres-app
+                key: password
+
+immich:
+  persistence:
+    # Hauptbibliothek (Originalfotos/-videos) - gemeinsames Volume für alle Komponenten
+    library:
+      existingClaim: immich-photos
+
+valkey:
+  # Job-Queue-Cache. Daten unkritisch (Jobs werden bei Verlust neu eingereiht) - emptyDir (Default) reicht.
+  enabled: true
+
+server:
+  enabled: true
+  controllers:
+    main:
+      containers:
+        main:
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "1"
+  persistence:
+    # Thumbnails auf separates SSD-Volume auslagern: Immich respektiert THUMB_LOCATION als Env-Var
+    # nicht zuverlässig (getestet 2026-07-09) - der Pfad muss direkt an der Stelle gemountet werden,
+    # wo Immich Thumbnails intern erwartet: <library-mount>/thumbs, hier also /data/thumbs
+    # (Library selbst liegt per "immich.persistence.library" auf /data).
+    thumbs:
+      existingClaim: immich-thumbs
+      globalMounts:
+        - path: /data/thumbs
+
+machine-learning:
+  enabled: true
+  controllers:
+    main:
+      containers:
+        main:
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "2"
+  persistence:
+    # Modell-Cache auf Longhorn statt emptyDir, damit ML-Modelle nicht bei jedem Pod-Neustart
+    # neu heruntergeladen werden müssen
+    cache:
+      enabled: true
+      type: persistentVolumeClaim
+      size: 10Gi
+      accessMode: ReadWriteMany
+      storageClass: longhorn
