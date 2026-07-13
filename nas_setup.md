@@ -546,6 +546,11 @@ velero backup describe test-backup
 
 > ✅ Verifiziert: BackupStorageLocation `Available`, Test-Backup `Completed` (39/39 Items).
 
+> ✅ **Nachtrag (2026-07-13):** Node-Agent (File System Backup) nachgerüstet und täglicher
+> Schedule (3 Uhr nachts, 30 Tage TTL, alle Namespaces außer System-Namespaces) eingerichtet —
+> sichert jetzt echte Volume-Daten (Postgres-DBs, Nextcloud-Dateien, Immich-/Jellyfin-Medien via
+> NFS), nicht nur Kubernetes-Manifeste. Details: `velero_setup.md` Abschnitt 6+7.
+
 ---
 
 ## 10. Nächste Schritte (nach NAS-Setup)

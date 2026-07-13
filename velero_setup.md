@@ -148,11 +148,84 @@ Erwartung: `Phase: Completed`, `Items backed up` entspricht `Total items to be b
 
 ---
 
+## 6. Node-Agent (File System Backup) — echte Volume-Daten sichern
+
+**Wichtige Erkenntnis:** Das ursprüngliche Setup (Abschnitt 4) sicherte mit
+`--use-volume-snapshots=false` zwar erfolgreich die Kubernetes-Manifeste, aber **keine echten
+Volume-Inhalte** — bei einem Restore wären PVCs leer zurückgekommen (Nextcloud-Dateien,
+Postgres-Datenbanken, Immich-/Jellyfin-Medien wären verloren gewesen). Grund: ohne
+`--use-node-agent` fehlt Veleros dateibasiertes Backup (kopia-basiertes File System Backup,
+läuft als DaemonSet auf jedem Node).
+
+`velero install` ist idempotent nachrüstbar — derselbe Befehl wie in Abschnitt 4, nur um
+`--use-node-agent` ergänzt, legt zusätzlich das fehlende `DaemonSet/node-agent` an, ohne
+Bestehendes zu verändern:
+
+```bash
+velero install \
+  --provider aws \
+  --plugins velero/velero-plugin-for-aws:v1.10.0 \
+  --bucket velero \
+  --secret-file ./velero-credentials \
+  --use-volume-snapshots=false \
+  --use-node-agent \
+  --backup-location-config region=minio,s3ForcePathStyle=true,s3Url=http://nas-01:9000
+```
+
+```bash
+kubectl get daemonset -n velero
+kubectl get pods -n velero -o wide
+```
+
+Erwartung: `node-agent` DaemonSet mit **2** Instanzen (nur auf den beiden ungetainteten Workern
+`k8s-worker-01`/`k8s-worker-02` — der getaintete Master bekommt korrekterweise keinen Pod).
+
+> ✅ **Status (2026-07-13):** erledigt, `node-agent` läuft `2/2 Ready` auf beiden Workern.
+
+---
+
+## 7. Backup-Schedule
+
+```bash
+velero schedule create daily-backup \
+  --schedule="0 3 * * *" \
+  --exclude-namespaces kube-system,kube-node-lease,kube-public,longhorn-system,velero,cnpg-system \
+  --ttl 720h0m0s \
+  --default-volumes-to-fs-backup
+```
+
+**Design-Entscheidungen:**
+- **Exclude- statt Include-Namespaces:** neue Apps (nach dem Muster von Nextcloud/Immich/Jellyfin)
+  werden automatisch mitgesichert, ohne den Schedule anzupassen. Ausgeschlossen sind reine
+  System-/Infrastruktur-Namespaces ohne eigene Nutzdaten (`kube-system`, `kube-node-lease`,
+  `kube-public`, `longhorn-system`, `velero` selbst, `cnpg-system` — der Operator-Namespace,
+  nicht die App-DB-Cluster, die liegen in `nextcloud`/`immich`).
+- **`0 3 * * *`** — täglich um 3 Uhr nachts, wenig Netzwerk-/Streaming-Last auf dem Cluster.
+- **`--ttl 720h0m0s`** — 30 Tage Aufbewahrung (Standardwert, konsistent mit den Test-Backups).
+- **`--default-volumes-to-fs-backup`** — aktiviert File System Backup (kopia, siehe Abschnitt 6)
+  für alle Pod-Volumes, ohne dass jeder Pod einzeln per Annotation opt-in muss.
+
+Verifiziert per manuellem Trigger nach Schedule-Template (`velero backup create
+daily-backup-verify --from-schedule daily-backup`), danach wieder gelöscht (der reguläre
+Schedule läuft ab jetzt eigenständig):
+
+> ✅ **Status (2026-07-13):** Verifikations-Backup `Completed`, 121/121 Items. Kopia-Volume-Backups
+> für alle App-Daten bestätigt — u.a. Nextcloud-Dateien (~834 MB), Nextcloud- und
+> Immich-Postgres-Datenbanken (~528 MB / ~743 MB), Immich-Fotos/Thumbnails (NFS, ~200 MB / ~55 MB),
+> **Jellyfin-Mediathek (NFS, ~6,1 GB)**. RAM-Headroom danach weiterhin komfortabel (Worker 31–42%).
+
+```bash
+velero schedule describe daily-backup
+```
+
+Nächster reguläres Backup: heute Nacht 3 Uhr (`velero get backups` bzw. `velero backup describe
+<name>` danach zur Kontrolle).
+
+---
+
 ## Nächste Schritte
 
-- **Backup-Schedule einrichten** (`velero schedule create`) statt nur manueller Test-Backups —
-  noch offen, nicht Teil dieses Setups.
-- **Restore-Test** — bisher nur Backup verifiziert, kein Restore in einen Test-Namespace
+- **Restore-Test** — bisher nur Backups verifiziert, kein Restore in einen Test-Namespace
   ausprobiert. Sollte vor "produktivem Vertrauen" in die Backups nachgeholt werden.
 - Alte SQLite-Cronjobs auf `k8s-master-01` aufräumen (siehe `nas_setup.md` Abschnitt 8) —
   niedrige Priorität, unabhängig von Velero.
