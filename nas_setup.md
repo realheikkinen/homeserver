@@ -554,7 +554,8 @@ velero backup describe test-backup
 3. ~~**CloudNativePG**~~ ✅ **erledigt (2026-07-07)** — eigene Anleitung: `cloudnativepg_setup.md`
 4. ~~**Nextcloud neu deployen**~~ ✅ **erledigt (2026-07-07)** — eigene Anleitung: `nextcloud_setup.md`
 5. ~~**Jellyfin deployen**~~ ✅ **erledigt (2026-07-07)** — eigene Anleitung: `jellyfin_setup.md` (Stefan hat Jellyfin bewusst vor Immich priorisiert, einfacher/schneller Erfolg)
-6. **Immich deployen** (Thumbnails auf NFS-SSD, Originale auf NFS-HDD) ← **nächster Schritt**
+6. ~~**Immich deployen**~~ ✅ **erledigt (2026-07-13)** (Thumbnails auf NFS-SSD, Originale auf
+   NFS-HDD) — eigene Anleitung: `immich_setup.md`
 7. **Velero einrichten** (nach Abschnitt 8) — bewusst nach hinten verschoben (2026-07-07): erst
    alle Apps deployen, dann EIN Backup-Setup, das alles abdeckt, statt jetzt für die noch leere
    Nextcloud-Instanz. CloudNativePG-eigene Backups (WAL gegen `cnpg-backups`) sind unabhängig
