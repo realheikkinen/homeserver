@@ -512,10 +512,13 @@ sudo crontab -e
 
 ## 9. Velero im k3s-Cluster einrichten
 
-```bash
-# Velero CLI installieren (auf eigenem Rechner oder Master)
-# https://github.com/vmware-tanzu/velero/releases
+> ✅ **Status (2026-07-13):** erledigt. Eigene, ausführliche Anleitung inkl. aller Fallen:
+> `velero_setup.md`. Kurzfassung unten.
 
+Dedizierter MinIO-User `velero` (nicht Root-Zugangsdaten) mit Policy nur auf den `velero`-Bucket
+— siehe `velero_setup.md` Abschnitt 1.
+
+```bash
 velero install \
   --provider aws \
   --plugins velero/velero-plugin-for-aws:v1.10.0 \
@@ -526,12 +529,12 @@ velero install \
     region=minio,s3ForcePathStyle=true,s3Url=http://nas-01:9000
 ```
 
-`./velero-credentials`:
+`./velero-credentials` (lokal, **nicht** im Git-Repo, siehe `.gitignore`):
 
 ```ini
 [default]
-aws_access_key_id=minioadmin
-aws_secret_access_key=<passwort>
+aws_access_key_id=velero
+aws_secret_access_key=<VELERO_SECRET>
 ```
 
 Backup testen:
@@ -540,6 +543,8 @@ Backup testen:
 velero backup create test-backup --include-namespaces nextcloud
 velero backup describe test-backup
 ```
+
+> ✅ Verifiziert: BackupStorageLocation `Available`, Test-Backup `Completed` (39/39 Items).
 
 ---
 
@@ -556,10 +561,9 @@ velero backup describe test-backup
 5. ~~**Jellyfin deployen**~~ ✅ **erledigt (2026-07-07)** — eigene Anleitung: `jellyfin_setup.md` (Stefan hat Jellyfin bewusst vor Immich priorisiert, einfacher/schneller Erfolg)
 6. ~~**Immich deployen**~~ ✅ **erledigt (2026-07-13)** (Thumbnails auf NFS-SSD, Originale auf
    NFS-HDD) — eigene Anleitung: `immich_setup.md`
-7. **Velero einrichten** (nach Abschnitt 8) — bewusst nach hinten verschoben (2026-07-07): erst
-   alle Apps deployen, dann EIN Backup-Setup, das alles abdeckt, statt jetzt für die noch leere
-   Nextcloud-Instanz. CloudNativePG-eigene Backups (WAL gegen `cnpg-backups`) sind unabhängig
-   davon möglich, sobald echte Daten in einer App-DB liegen.
+7. ~~**Velero einrichten**~~ ✅ **erledigt (2026-07-13)** — eigene Anleitung: `velero_setup.md`.
+   Test-Backup erfolgreich (`nextcloud`-Namespace, 39/39 Items). Offen: Backup-Schedule und
+   Restore-Test (siehe "Nächste Schritte" in `velero_setup.md`).
 8. **PostgreSQL als k3s-Datastore** (Abschnitt 6 — später, wenn der Cluster stabil läuft; SQLite reicht für den Start)
 
 ---
