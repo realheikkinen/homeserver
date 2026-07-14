@@ -566,9 +566,8 @@ velero backup describe test-backup
 5. ~~**Jellyfin deployen**~~ ✅ **erledigt (2026-07-07)** — eigene Anleitung: `jellyfin_setup.md` (Stefan hat Jellyfin bewusst vor Immich priorisiert, einfacher/schneller Erfolg)
 6. ~~**Immich deployen**~~ ✅ **erledigt (2026-07-13)** (Thumbnails auf NFS-SSD, Originale auf
    NFS-HDD) — eigene Anleitung: `immich_setup.md`
-7. ~~**Velero einrichten**~~ ✅ **erledigt (2026-07-13)** — eigene Anleitung: `velero_setup.md`.
-   Test-Backup erfolgreich (`nextcloud`-Namespace, 39/39 Items). Offen: Backup-Schedule und
-   Restore-Test (siehe "Nächste Schritte" in `velero_setup.md`).
+7. ~~**Velero einrichten**~~ ✅ **erledigt (2026-07-13)**, inkl. Backup-Schedule, Node-Agent und
+   Restore-Test (2026-07-14) — eigene Anleitung: `velero_setup.md`.
 8. **PostgreSQL als k3s-Datastore** (Abschnitt 6 — später, wenn der Cluster stabil läuft; SQLite reicht für den Start)
 
 ---

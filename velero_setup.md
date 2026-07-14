@@ -225,9 +225,101 @@ Nächster reguläres Backup: heute Nacht 3 Uhr (`velero get backups` bzw. `veler
 
 ## Nächste Schritte
 
-- **Restore-Test** — bisher nur Backups verifiziert, kein Restore in einen Test-Namespace
-  ausprobiert. Sollte vor "produktivem Vertrauen" in die Backups nachgeholt werden.
 - Alte SQLite-Cronjobs auf `k8s-master-01` aufräumen (siehe `nas_setup.md` Abschnitt 8) —
   niedrige Priorität, unabhängig von Velero.
 - Laut Roadmap (`nas_setup.md` Abschnitt 10) danach optional: PostgreSQL als k3s-Datastore
   (Abschnitt 6, weiterhin zurückgestellt).
+
+---
+
+## 8. Restore-Test
+
+> ✅ **Status (2026-07-14):** erledigt und erfolgreich. Erste echte Verifikation, dass sich aus
+> einem Backup tatsächlich etwas wiederherstellen lässt — nicht nur, dass Backups `Completed`
+> melden.
+
+### Vorgehen
+
+Restore aus dem aktuellsten täglichen Backup, per Namespace-Mapping in einen separaten
+Test-Namespace (nie zurück in den Original-Namespace — Kollisionsgefahr mit der laufenden
+Instanz):
+
+```bash
+velero restore create nextcloud-restore-test \
+  --from-backup daily-backup-<datum> \
+  --namespace-mappings nextcloud:nextcloud-restore-test \
+  --wait
+```
+
+> **Falle beim ersten Versuch:** Ohne `--include-namespaces nextcloud` versucht Velero, das
+> **gesamte** Backup wiederherzustellen (alle Namespaces des Schedules) — nur `nextcloud` wird
+> dabei über das Mapping umgeleitet, `immich`/`jellyfin`/etc. landen als Restore-Versuch im
+> **Original-Namespace** und scheitern dort erwartungsgemäß an bereits existierenden Ressourcen
+> (`already exists`, harmlos, aber unübersichtlich in der Restore-Beschreibung). Für einen
+> gezielten Test unbedingt zusätzlich `--include-namespaces nextcloud` setzen.
+
+### Befund: NodePort-Kollision
+
+Restore-Status war `PartiallyFailed` — der einzige echte Fehler (kein Neben-Rauschen durch den
+fehlenden `--include-namespaces`-Filter):
+
+```
+error restoring services/nextcloud-restore-test/nextcloud: Service "nextcloud" is invalid:
+spec.ports[0].nodePort: Invalid value: 30080: provided port is already allocated
+```
+
+Der gesicherte Service bringt den festen NodePort (`30080`) aus dem Original mit — der ist aber
+vom laufenden Produktiv-Nextcloud belegt. **Erkenntnis: NodePort-Services lassen sich nicht
+parallel zum Original in einen Test-Namespace restoren, ohne den Port zu ändern oder den Service
+aus dem Restore auszuschließen** (z. B. `--exclude-resources services` plus manuellen
+ClusterIP/Port-Forward-Zugriff für den Test). Für einen echten Disaster-Recovery-Restore (Original
+existiert nicht mehr / Namespace wird vorher gelöscht) tritt dieses Problem nicht auf.
+
+### Verifikation trotz fehlendem Service
+
+Deployment, beide PVCs (`nextcloud-nextcloud`, `nextcloud-postgres-1`) und der CloudNativePG-
+Cluster kamen sauber an — Kopia-Volume-Restore erfolgreich, CNPG-Operator hat die Cluster-Resource
+im neuen Namespace eigenständig zu `healthy` reconciled (kein manuelles Eingreifen nötig):
+
+```bash
+kubectl get pods,pvc -n nextcloud-restore-test
+kubectl get cluster -n nextcloud-restore-test
+# Cluster in healthy state, PRIMARY nextcloud-postgres-1
+```
+
+Inhaltlicher Abgleich mit der Original-Instanz — **identisch**:
+
+```bash
+kubectl exec -n nextcloud-restore-test nextcloud-<pod> -- du -sh /var/www/html/data
+# 73M, gleiche Dateiliste (admin, appdata_..., nextcloud.log) wie im Original
+
+kubectl exec -n nextcloud-restore-test nextcloud-postgres-1 -c postgres -- \
+  psql -U postgres -d nextcloud -c "SELECT count(*) FROM oc_users;"
+# 1 (stimmt mit Original überein)
+```
+
+Funktionaler Test per Port-Forward (da kein Service verfügbar):
+
+```bash
+kubectl port-forward -n nextcloud-restore-test pod/nextcloud-<pod> 18080:80
+curl http://localhost:18080/status.php
+# {"installed":true,"maintenance":false,"needsDbUpgrade":false,...} — kein Setup-Wizard,
+# App startet direkt mit den wiederhergestellten Daten
+```
+
+### Aufräumen
+
+```bash
+kubectl delete namespace nextcloud-restore-test
+velero restore delete nextcloud-restore-test --confirm
+```
+
+> ✅ Original-Instanz (`nextcloud`-Namespace) während des gesamten Tests unberührt geblieben,
+> danach verifiziert (`Running`, `Bound`, unveränderte AGE).
+
+### Fazit
+
+Der Restore-Pfad funktioniert für Manifeste, Longhorn-PVCs (Kopia-Volume-Restore) und
+CloudNativePG-Cluster. Einzige gefundene Einschränkung ist die NodePort-Kollision bei
+Parallel-Restores neben der laufenden Instanz — für einen echten Recovery-Fall (Original weg)
+irrelevant, aber gut zu wissen für künftige Restore-Tests neben Live-Systemen.
