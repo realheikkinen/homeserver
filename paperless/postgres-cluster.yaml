@@ -1,0 +1,22 @@
+# instances: 1 statt 3 -- siehe Architektur-Entscheidung in cloudnativepg_setup.md
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: paperless-postgres
+  namespace: paperless
+spec:
+  instances: 1
+  storage:
+    size: 4Gi
+    storageClass: longhorn
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  bootstrap:
+    initdb:
+      database: paperless
+      owner: paperless

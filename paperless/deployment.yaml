@@ -1,0 +1,139 @@
+# Paperless läuft als ein einziger Container (Webserver + Celery-Worker + Consumer-Watcher
+# zusammen im Entrypoint) -- kein separates Consumer-Deployment, deckt sich mit dem offiziellen
+# docker-compose-Referenz-File des Projekts.
+#
+# strategy: Recreate vermeidet den bei Jellyfin beobachteten kurzzeitigen Multi-Attach-Fehler
+# bei RWO-Longhorn-PVCs beim Pod-Reschedule (siehe jellyfin_setup.md).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: paperless
+  namespace: paperless
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: paperless
+  template:
+    metadata:
+      labels:
+        app: paperless
+    spec:
+      # Ohne dies injiziert Kubernetes Docker-Links-Env-Vars für jeden Service im Namespace,
+      # u.a. PAPERLESS_PORT=tcp://<cluster-ip>:8000 (weil der Service selbst "paperless" heißt) --
+      # das überschreibt den von Paperless intern erwarteten Port-Wert und lässt granian crashen.
+      enableServiceLinks: false
+      containers:
+        - name: paperless
+          image: ghcr.io/paperless-ngx/paperless-ngx:2.20.15
+          ports:
+            - containerPort: 8000
+          env:
+            - name: PAPERLESS_DBENGINE
+              value: postgresql
+            - name: PAPERLESS_DBHOST
+              value: paperless-postgres-rw
+            - name: PAPERLESS_DBPORT
+              valueFrom:
+                secretKeyRef:
+                  name: paperless-postgres-app
+                  key: port
+            - name: PAPERLESS_DBNAME
+              valueFrom:
+                secretKeyRef:
+                  name: paperless-postgres-app
+                  key: dbname
+            - name: PAPERLESS_DBUSER
+              valueFrom:
+                secretKeyRef:
+                  name: paperless-postgres-app
+                  key: username
+            - name: PAPERLESS_DBPASS
+              valueFrom:
+                secretKeyRef:
+                  name: paperless-postgres-app
+                  key: password
+            - name: PAPERLESS_REDIS
+              value: redis://paperless-valkey:6379
+            - name: PAPERLESS_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: paperless-secret-key
+                  key: secret-key
+            - name: PAPERLESS_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: paperless-admin
+                  key: paperless-admin-username
+            - name: PAPERLESS_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: paperless-admin
+                  key: paperless-admin-password
+            - name: PAPERLESS_URL
+              value: http://192.168.188.89:30185
+            - name: PAPERLESS_OCR_LANGUAGE
+              value: deu+eng
+            # inotify erkennt keine Änderungen, die von einem ANDEREN NFS-Client als Paperless
+            # selbst geschrieben werden (bekannte NFS-Einschränkung) -- ohne Polling verarbeitet
+            # Paperless nur Dateien, die schon beim Container-Start im consume-Ordner lagen.
+            - name: PAPERLESS_CONSUMER_POLLING
+              value: "30"
+            - name: PAPERLESS_TIME_ZONE
+              value: Europe/Berlin
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1536Mi"
+              cpu: "1"
+          volumeMounts:
+            - name: data
+              mountPath: /usr/src/paperless/data
+            - name: media
+              mountPath: /usr/src/paperless/media
+            - name: consume
+              mountPath: /usr/src/paperless/consume
+          startupProbe:
+            httpGet:
+              path: /api/
+              port: 8000
+            periodSeconds: 10
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /api/
+              port: 8000
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/
+              port: 8000
+            periodSeconds: 10
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: paperless-data
+        - name: media
+          persistentVolumeClaim:
+            claimName: paperless-media
+        - name: consume
+          persistentVolumeClaim:
+            claimName: paperless-consume
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: paperless
+  namespace: paperless
+spec:
+  type: NodePort
+  selector:
+    app: paperless
+  ports:
+    - port: 8000
+      targetPort: 8000
+      nodePort: 30185

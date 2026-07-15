@@ -1,0 +1,47 @@
+# Job-Queue für Paperless (Celery-Broker) -- Daten unkritisch bei Verlust, daher emptyDir
+# statt PVC (analog immich-valkey, siehe immich_setup.md)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: paperless-valkey
+  namespace: paperless
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: paperless-valkey
+  template:
+    metadata:
+      labels:
+        app: paperless-valkey
+    spec:
+      containers:
+        - name: valkey
+          image: valkey/valkey:8-alpine
+          ports:
+            - containerPort: 6379
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: paperless-valkey
+  namespace: paperless
+spec:
+  selector:
+    app: paperless-valkey
+  ports:
+    - port: 6379
+      targetPort: 6379
